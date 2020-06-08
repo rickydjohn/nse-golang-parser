@@ -10,6 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var offdays []string
+
 //Endpoints is for exporting
 type Endpoints struct {
 	URL    string   `json:"url"`
@@ -44,7 +46,8 @@ type fetchshare struct {
 }
 
 //New creates an object for communicating with this module
-func New(Parser Parser, db db.Db, log *logrus.Entry) *Nseparser {
+func New(Parser Parser, db db.Db, log *logrus.Entry, holidays []string) *Nseparser {
+	offdays = holidays
 	p := Nseparser{
 		p:       Parser,
 		log:     log,
@@ -104,51 +107,63 @@ func (np *Nseparser) workers() {
 	go func() { np.Done <- struct{}{} }()
 }
 
-//Schedule will call all the endpoints
-func (np *Nseparser) Schedule() {
-	stime := time.Now()
+func (np *Nseparser) isRunnable(stime time.Time) bool {
 	loc, err := time.LoadLocation("Asia/Kolkata")
-
 	if err != nil {
 		np.log.Error(err)
-		np.Done <- struct{}{}
-		return
+		return false
+	}
+
+	for _, v := range offdays {
+		if stime.Format("02-Jan-2006") == v {
+			return false
+		}
 	}
 
 	start, err := time.Parse("2/1/2006 15:04:05 MST", strconv.Itoa(stime.Day())+"/"+strconv.Itoa(int(stime.Month()))+"/"+strconv.Itoa(stime.Year())+" 9:00:00 IST")
 
 	if err != nil {
 		np.log.Error(err)
-		np.Done <- struct{}{}
-		return
+		return false
 	}
-	end, err := time.Parse("2/1/2006 15:04:05 MST", strconv.Itoa(stime.Day())+"/"+strconv.Itoa(int(stime.Month()))+"/"+strconv.Itoa(stime.Year())+" 15:30:59 IST")
+	end, err := time.Parse("2/1/2006 15:04:05 MST", strconv.Itoa(stime.Day())+"/"+strconv.Itoa(int(stime.Month()))+"/"+strconv.Itoa(stime.Year())+" 15:31:59 IST")
 	if err != nil {
 		np.log.Error(err)
-		np.Done <- struct{}{}
-		return
+		return false
 	}
 
 	if time.Now().Sub(start.In(loc)).Seconds() > 0 && time.Now().Sub(end.In(loc)).Seconds() < 0 {
 		if int(stime.Weekday()) > 0 && int(stime.Weekday()) <= 5 {
-			for _, v := range np.p.Equities.Shares {
-				np.wg.Add(1)
-				np.payload <- fetchshare{url: np.p.Equities.URL + v, stype: "equities"}
-			}
-
-			for _, v := range np.p.Indexes.Shares {
-				np.wg.Add(1)
-				np.payload <- fetchshare{url: np.p.Indexes.URL + v, stype: "indexes"}
-			}
-			np.wg.Wait()
-			np.log.Println("All workers have completed their tasks.")
+			return true
 		}
 	}
+	return false
+}
+
+//Schedule will call all the endpoints
+func (np *Nseparser) Schedule() {
+	stime := time.Now()
+	np.log.Info("starting task at ", stime.Format("02-Jan-2006 15:04:05"))
+	if np.isRunnable(stime) {
+		for _, v := range np.p.Equities.Shares {
+			np.wg.Add(1)
+			np.payload <- fetchshare{url: np.p.Equities.URL + v, stype: "equities"}
+		}
+
+		for _, v := range np.p.Indexes.Shares {
+			np.wg.Add(1)
+			np.payload <- fetchshare{url: np.p.Indexes.URL + v, stype: "indexes"}
+		}
+		np.wg.Wait()
+		np.log.Println("All workers have completed their tasks.")
+
+	}
+
+	np.log.Info("Completed task in ", time.Now().Sub(stime).Nanoseconds(), "ns")
 
 	if stime.Minute() == time.Now().Minute() {
 		time.Sleep(time.Duration(60-time.Now().Second()) * time.Second)
 	}
+
 	np.Done <- struct{}{}
 }
-
-

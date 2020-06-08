@@ -20,7 +20,6 @@ type nsejson struct {
 
 func gunzipWrite(w io.Writer, data []byte) error {
 	// Write gzipped data to the client
-	http.MethodGet
 	gr, err := gzip.NewReader(bytes.NewBuffer(data))
 	if err != nil {
 		return err

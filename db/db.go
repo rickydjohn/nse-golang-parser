@@ -11,10 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type cp string
+
 //PE is call type PE
 const (
-	PE = "PE"
-	CE = "CE"
+	PE cp = "PE"
+	CE cp = "CE"
 )
 
 //Db is interface

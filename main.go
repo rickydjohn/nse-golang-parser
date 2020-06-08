@@ -12,8 +12,9 @@ import (
 )
 
 type config struct {
-	Parser fetchnse.Parser `json:"parser"`
-	Db     string          `json:"db"`
+	Parser   fetchnse.Parser `json:"parser"`
+	Db       string          `json:"db"`
+	Holidays []string        `json:"holidays"`
 }
 
 func main() {
@@ -37,11 +38,10 @@ func main() {
 		log.Fatalln("Error while reading data from config file. ", err)
 	}
 	db := db.New(c.Db, log.WithField("module", "db"))
-	nse := fetchnse.New(c.Parser, db, log.WithField("module", "fetchnse"))
+	nse := fetchnse.New(c.Parser, db, log.WithField("module", "fetchnse"), c.Holidays)
 	for {
 		select {
 		case <-nse.Done:
-			log.Info("Done received")
 			go nse.Schedule()
 
 		}
